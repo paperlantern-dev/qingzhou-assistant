@@ -1,0 +1,14 @@
+# built things
+.build/
+build/
+# test screenshots and reports
+test-reports/
+# machine-local
+.DS_Store
+.claude/
+.gstack/
+# your own data: never commit keys, customer chats or your real knowledge base
+*.env
+.env*
+客户记忆/
+dist/
