@@ -41,3 +41,17 @@ func unreadPictureStaysHere() {
     #expect(unread.note(number: 1, attached: false).contains("没读清"))
     #expect(PictureInfo(text: "红富士", labels: [], hasPrivateText: false).mayGoToCloud)
 }
+
+@Test("A picture whose privacy can't be judged stays on this Mac: words it is not sure of, or a document with no words read")
+func uncertainPicturesStayHere() {
+    func info(_ lines: [(String, Float)], _ labels: [String]) -> PictureInfo {
+        PictureReader.assess(lines: lines.map { (text: $0.0, confidence: $0.1) }, labels: labels)
+    }
+    #expect(info([("红富士 2斤", 0.9)], ["fruit"]).mayGoToCloud)
+    #expect(info([], ["fruit", "apple"]).mayGoToCloud)                  // a photo of fruit, no words in it
+    #expect(!info([("收货人 王小明", 0.9)], []).mayGoToCloud)            // private words
+    #expect(!info([("红富士", 0.9), ("l3g0O", 0.2)], ["fruit"]).mayGoToCloud)   // some words could not be read
+    #expect(!info([], ["document"]).mayGoToCloud)                       // looks like a document, nothing read
+    #expect(info([], []).mayGoToCloud)                                  // a plain picture: no writing found
+    #expect(info([], ["document"]).note(number: 1, attached: false).contains("没读清"))
+}

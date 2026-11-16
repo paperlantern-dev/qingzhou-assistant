@@ -187,3 +187,21 @@ func sendCheckCatchesChanges() {
     #expect(SendCheck.problem(chat: chat, pendingKey: "红富士多少钱", nowChat: chat, nowPendingKey: "", nowInput: "") != nil)
     #expect(SendCheck.problem(chat: chat, pendingKey: "红富士多少钱", nowChat: chat, nowPendingKey: "红富士多少钱", nowInput: "我自己打到一半的话") != nil)
 }
+
+@Test("Only the assistant's own text is ever taken back out of the input box")
+func cleanupOnlyTouchesAssistantText() {
+    let reply = "红富士5斤装39元，今天下单明天发"
+    #expect(SendCheck.isAssistantText(input: reply, reply: reply))
+    #expect(SendCheck.isAssistantText(input: "红富士5斤装39", reply: reply))          // typed half-way
+    #expect(!SendCheck.isAssistantText(input: "我自己打到一半的话", reply: reply))   // the owner's own draft
+    #expect(!SendCheck.isAssistantText(input: "", reply: reply))
+    #expect(!SendCheck.isAssistantText(input: "好", reply: reply))                    // too little to tell
+}
+
+@Test("Test runs keep their data in a folder of their own, never the owner's records")
+func testRunsUseTheirOwnData() {
+    let support = URL(fileURLWithPath: "/data/Application Support"), temp = URL(fileURLWithPath: "/tmp/x")
+    #expect(AppData.root(arguments: ["app"], support: support, temp: temp).path == "/data/Application Support/轻舟助手")
+    #expect(AppData.root(arguments: ["app", "--autotest", "r.json"], support: support, temp: temp).path.hasPrefix("/tmp/x/"))
+    #expect(AppData.root(arguments: ["app", "--autotest", "r.json", "--data-dir", "/d/run1"], support: support, temp: temp).path == "/d/run1")
+}

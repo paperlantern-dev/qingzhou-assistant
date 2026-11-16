@@ -10,6 +10,13 @@ public enum Privacy {
     public static func redact(_ text: String) -> (text: String, changed: Bool) {
         var s = text
         s = replace(#"(收货人|收件人|联系人|姓名|名字|称呼)(\s*[:：]\s*)[^\s,，;；。]+"#, in: s, with: "$1$2\(name)")
+        // The same labels without a colon: “联系人 王小明”, “姓名是王小明” (not “联系人电话…”, “名字是什么”).
+        s = replace(#"(收货人|收件人|联系人|姓名|名字)(\s*是\s*|\s+)(?!什么|啥|谁|电话|手机|地址|［)[\u4e00-\u9fa5·]{2,4}(?![\u4e00-\u9fa5])"#,
+                    in: s, with: "$1$2\(name)")
+        // “我是王小明”, “我叫王小明今年30岁”: a common surname and one or two more characters, then the end,
+        // punctuation, a number or “今年”. (“我是想问…”, “我是老客户” stay.)
+        s = replace("(我叫|我是|本人是?|我的名字是|我名字叫)[\(surnames)][\\u4e00-\\u9fa5]{1,2}?(?=$|[\\s,，。.!！、：:；;?？0-9A-Za-z]|今年|先生|女士|小姐)",
+                    in: s, with: "$1\(name)")
         s = replace(#"我叫(?![你他她它我人了咱大])[\u4e00-\u9fa5·]{2,4}(?=[\s,，。.!！、]|$)"#, in: s, with: "我叫\(name)")
         s = replace(#"((?i:my name is)\s+)[A-Z][a-z]+(?:\s[A-Z][a-z]+)?"#, in: s, with: "$1\(name)")
         s = replace(#"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"#, in: s, with: email)
@@ -37,6 +44,9 @@ public enum Privacy {
         guard r.changed else { return prompt }
         return "（注意：内容里的\(address)\(phone)\(name)\(idNumber)\(email)\(weChat)是为了保护隐私隐藏掉的，不要猜，也不要在回复里写出来。）\n" + r.text
     }
+
+    /// The hundred or so most common family names, for “我是王小明”.
+    private static let surnames = "王李张刘陈杨黄赵吴周徐孙马朱胡郭何林罗高郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛闫段雷侯龙史陶黎贺顾毛郝龚邵万钱严覃武戴莫孔向汤"
 
     // MARK: - Street addresses without a label
 

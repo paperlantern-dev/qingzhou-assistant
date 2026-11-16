@@ -21,19 +21,12 @@ package() { # <app name> <executable> <plist> [icon.icns]
 }
 package "轻舟助手" QingzhouApp Resources/Info.plist Resources/AppIcon.icns
 package "模拟微信" MockWeChat Resources/MockWeChat-Info.plist
-# Only the sample files (示例-*) go into the download, never the rest of knowledge/, which may
-# hold a real shop's prices. The build stops if a sample has a phone number, an email or a key in it.
-SAMPLES="$OUT/轻舟助手.app/Contents/Resources/示例知识库"
-mkdir -p "$SAMPLES"
-cp knowledge/示例-* "$SAMPLES/"
-SKIPPED="$(find knowledge -type f ! -name '示例-*' ! -name '.*' | wc -l | tr -d ' ')"
-if [ "$SKIPPED" != "0" ]; then echo "Not packaged: $SKIPPED file(s) in knowledge/ that are not named 示例-*"; fi
-if grep -rnE '1[3-9][0-9]([ -]?[0-9]){8}|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}|sk-[A-Za-z0-9_-]{16,}' "$SAMPLES"; then
-  echo "Stopped: the sample knowledge above looks private (phone number, email or API key)." >&2
-  exit 1
-fi
+# Only the reviewed sample knowledge goes into the download (see stage_samples.sh): the owner's own
+# knowledge base lives outside this folder and is never packaged.
+bash scripts/stage_samples.sh knowledge-samples scripts/reviewed-samples.txt "$OUT/轻舟助手.app/Contents/Resources/示例知识库"
 codesign --force --sign - "$OUT/轻舟助手.app" "$OUT/模拟微信.app"
 
 ZIP="dist/qingzhou-assistant-$VERSION.zip"
 ditto -c -k --norsrc --keepParent "$OUT" "$ZIP"
+bash scripts/scan_release.sh "$ZIP"
 echo "Built $ZIP"

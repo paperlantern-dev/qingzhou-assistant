@@ -134,6 +134,12 @@ enum AutoTest {
         if args.contains("--saved-persona") { ctl.options.persona = saved.persona }   // the owner's 店铺人设
         ctl.alertAddress = ""
         if args.contains("--assist") { ctl.options.assistMode = true }
+        if args.contains("--pictures-to-model") { ctl.options.picturesToModel = true }
+        // Sending-safety tests: wait this long right before the last look and Return, optionally pausing meanwhile.
+        if let h = args.firstIndex(of: "--hold-before-send"), h + 1 < args.count {
+            AutoReplyController.holdBeforeSend = Double(args[h + 1]) ?? 0
+        }
+        AutoReplyController.pauseInHold = args.contains("--pause-in-hold")
         // One after another, each seeing the ones before (as in the panel).
         let says = args.enumerated().compactMap { i, a in a == "--settings-say" && i + 1 < args.count ? args[i + 1] : nil }
         if !says.isEmpty {

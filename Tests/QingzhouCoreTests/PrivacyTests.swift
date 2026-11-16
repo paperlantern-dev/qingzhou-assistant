@@ -75,3 +75,41 @@ func privacyHidesStatedNames() {
     #expect(Privacy.redact("my name is John Smith").text == "my name is ［姓名］")
     #expect(Privacy.redact("我叫你发货了吗").text == "我叫你发货了吗")
 }
+
+@Test("Names said without a colon are hidden: 我是…, 联系人 …, 姓名是…, 我叫…今年…")
+func privacyHidesNamesWithoutColon() {
+    #expect(Privacy.redact("我是王小明").text == "我是［姓名］")
+    #expect(Privacy.redact("联系人 王小明").text == "联系人 ［姓名］")
+    #expect(Privacy.redact("姓名是王小明").text == "姓名是［姓名］")
+    #expect(Privacy.redact("我叫王小明今年30岁").text == "我叫［姓名］今年30岁")
+    #expect(Privacy.redact("本人李四，昨天下的单").text == "本人［姓名］，昨天下的单")
+    // Ordinary sentences stay as they are.
+    for plain in ["我是想问下脐橙怎么卖", "我是老客户了", "你的名字是什么", "我是昨天下单的", "联系人电话多少"] {
+        #expect(Privacy.redact(plain).text == plain)
+    }
+}
+
+@Test("A phone alert hides private details in the customer's name, the message and the reason")
+func alertHidesPrivateDetails() {
+    let text = AlertWebhook.message(who: "王小明 13900000001", text: "我是王小明，发到 zhang.san@example.com",
+                                    reason: "客户留了电话 13900000002")
+    #expect(!text.contains("13900000001") && !text.contains("13900000002"))
+    #expect(!text.contains("zhang.san@example.com") && !text.contains("我是王小明"))
+    #expect(text.contains("［电话］"))
+}
+
+@Test("Everything that goes to a cloud model is hidden first: chat, knowledge, memory summary")
+func cloudPromptHidesEveryField() throws {
+    let conv = Conversation(bubbles: [ChatBubble(fromMe: false, text: "我叫王小明今年30岁，电话 13900000001", top: 0)],
+                            title: "王小明 13900000002")
+    let chunk = KnowledgeChunk(id: 1, source: "店铺.md", text: "店主微信：apple_shop2024，邮箱 shop@example.com")
+    var record = CustomerRecord(chatID: ChatID.make(title: "王小明"), name: "王小明")
+    record.summary = "收货人：王小明，示例省示例市示例区示例路88号"
+    let prompt = PromptBuilder.build(conversation: conv, knowledge: [chunk], memory: record, earlier: [], lessons: "", persona: "")
+    let config = ApiConfig(name: "t", baseURL: "https://api.example.com/v1", model: "m")
+    let request = try OpenAICompatibleEngine.request(config: config, apiKey: "k", prompt: prompt, images: [])
+    let body = String(data: try #require(request.httpBody), encoding: .utf8) ?? ""
+    for secret in ["13900000001", "13900000002", "apple_shop2024", "shop@example.com", "示例路88号", "我叫王小明"] {
+        #expect(!body.contains(secret), "\(secret) left this Mac")
+    }
+}

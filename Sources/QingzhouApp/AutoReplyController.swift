@@ -714,7 +714,7 @@ final class AutoReplyController: ObservableObject {
             guard let method = try await deliver(reply.text, in: now, chat: chat) else {
                 guard isRunning else { return }   // paused while typing; nothing was sent
                 failedChat = chat; failedKey = key; failedAt = Date()
-                add(.error, "发送后，窗口里没有出现我的消息（未确认发送成功），30 秒后重试")
+                add(.error, "这条没有发出，或者没能在窗口里确认发出，30 秒后重试")
                 return
             }
             step("已发送", method)
@@ -754,24 +754,28 @@ final class AutoReplyController: ObservableObject {
     }
 
     /// Sends one message into the open chat (background typing, or paste as a fallback) and checks
-    /// it shows up as my newest message. Returns how it was sent, or nil if it was not confirmed.
+    /// it shows up as my newest message. Returns how it was sent, or nil if it was not sent or not confirmed.
+    /// Whichever way it goes, the screen is read again right before Return: another chat showing, a newer
+    /// message, other words in the input box, an unreadable window or a pause all call the send off.
     func deliver(_ text: String, in snap: Snapshot, chat: String) async throws -> String? {
         guard var pid = snap.window.owningApplication?.processID else { throw SendError.appNotRunning }
+        let snap = await clearStranded(in: snap, pid: pid)
+        let key = snap.conversation.pendingKey
         var method = "后台发送"
-        if !(backgroundMode ? await sendInBackground(text, pid: pid, snapshot: snap, chat: chat) : false) {
+        switch backgroundMode ? await sendInBackground(text, pid: pid, snapshot: snap, chat: chat) : .useForeground {
+        case .sent: break
+        case .calledOff: return nil
+        case .useForeground:
             guard isRunning else { return nil }   // paused (暂停 / 双击 Esc) while typing: don't fall back to pasting
-            var screen = snap
-            if backgroundMode {
-                guard await waitForIdle(before: "前台发送") else { return nil }
-                // Look again right before pasting: the chat may have changed while waiting.
-                guard let fresh = await read(forceOCR: true), let freshPID = fresh.window.owningApplication?.processID else {
-                    add(.warn, "前台发送前没能看清聊天窗口，这条先不发")
-                    return nil
-                }
-                screen = fresh
-                pid = freshPID
+            if backgroundMode { guard await waitForIdle(before: "前台发送") else { return nil } }
+            // Look again right before pasting: the chat may have changed while waiting.
+            guard let screen = await read(forceOCR: true), let freshPID = screen.window.owningApplication?.processID else {
+                add(.warn, "前台发送前没能看清聊天窗口，这条先不发")
+                return nil
             }
-            if let why = SendCheck.problem(chat: chat, pendingKey: snap.conversation.pendingKey, nowChat: screen.chat,
+            pid = freshPID
+            guard isRunning else { return nil }
+            if let why = SendCheck.problem(chat: chat, pendingKey: key, nowChat: screen.chat,
                                            nowPendingKey: screen.conversation.pendingKey, nowInput: screen.inputText) {
                 add(.warn, "前台发送前又看了一眼：\(why)，这条先不发")
                 return nil
@@ -780,7 +784,26 @@ final class AutoReplyController: ObservableObject {
             let paneMidX = f.minX + target.layout.sidebarWidth + (f.width - target.layout.sidebarWidth) / 2
             let point = CGPoint(x: paneMidX, y: f.maxY - target.layout.inputClickFromBottom)
             add(.debug, "发送：窗口 \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))×\(Int(f.height))，点击输入框 \(Int(point.x)),\(Int(point.y))")
-            try await AutoSender.send(text, toPID: pid, windowFrame: f, clickPoint: point)
+            // Pasted, not yet sent: one more look, then Return.
+            let pressed = try await AutoSender.send(text, toPID: pid, windowFrame: f, clickPoint: point) { [self] in
+                await holdForTest()
+                let pasted = await read(forceOCR: true)
+                let why = pasted == nil ? "没能看清聊天窗口"
+                    : !isRunning ? "已暂停"
+                    : SendCheck.problem(chat: chat, pendingKey: key, nowChat: pasted!.chat,
+                                        nowPendingKey: pasted!.conversation.pendingKey, nowInput: "")
+                    ?? (Self.inputShows(pasted!.inputText, text) || TextMatch.normalize(text).count < 2 ? nil : "输入框里不是这条回复")
+                guard let why else { return true }
+                // Still this chat and only my text in the box: empty it. Otherwise leave the box alone.
+                if let pasted, ChatID.same(pasted.chat, chat), SendCheck.isAssistantText(input: pasted.inputText, reply: text) {
+                    await AutoSender.deletePastedText(characters: text.count + 2)
+                } else if pasted.map({ !PictureCheck.inputLooksEmpty($0.inputText) || !ChatID.same($0.chat, chat) }) ?? true {
+                    Self.stranded.append((chat, text))
+                }
+                add(.warn, "按发送前又看了一眼：\(why)，这条没有发出")
+                return false
+            }
+            guard pressed else { return nil }
             method = "前台粘贴发送"
         }
         lastSendAt = Date()
@@ -799,9 +822,7 @@ final class AutoReplyController: ObservableObject {
             return method
         }
         // Don't leave the text sitting in the input box (it would be typed twice on retry).
-        if let left = await read(forceOCR: true), Self.inputShows(left.inputText, text) {
-            await AutoSender.keyInBackground(51, toPID: pid, times: text.count + 2)
-        }
+        await takeBack(text, chat: chat, pid: pid, seen: await read(forceOCR: true))
         return nil
     }
 

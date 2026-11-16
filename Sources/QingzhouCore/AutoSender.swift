@@ -35,21 +35,43 @@ public enum AutoSender {
 
     /// `clickPoint` is in global screen coordinates (origin top-left), like CGWindow frames.
     /// `windowFrame` is the target chat window's frame, used to raise exactly that window.
-    public static func send(_ text: String, toPID pid: pid_t, windowFrame: CGRect, clickPoint: CGPoint) async throws {
-        try await paste(toPID: pid, windowFrame: windowFrame, clickPoint: clickPoint, settle: 350_000_000) {
+    /// `confirm` runs after the text is in the input box and before Return: false calls the send off
+    /// (Return is not pressed). Returns whether Return was pressed.
+    @discardableResult
+    public static func send(_ text: String, toPID pid: pid_t, windowFrame: CGRect, clickPoint: CGPoint,
+                            confirm: (() async -> Bool)? = nil) async throws -> Bool {
+        try await paste(toPID: pid, windowFrame: windowFrame, clickPoint: clickPoint, settle: 350_000_000, confirm: confirm) {
             $0.setString(text, forType: .string)
         }
     }
 
+    /// Backspaces in the front app: takes back the reply just pasted (the caret is at its end). Only
+    /// called right after a paste, when the box was seen to hold nothing but that reply.
+    public static func deletePastedText(characters: Int) async {
+        for _ in 0..<characters {
+            key(51)                   // Delete
+            await wait(15_000_000)
+        }
+        await wait(150_000_000)
+    }
+
+    /// Waits even when the calling task was cancelled (a pause cancels it): the keys that follow must
+    /// still reach the chat app before the front window is handed back.
+    private static func wait(_ nanoseconds: UInt64) async {
+        await Task.detached { try? await Task.sleep(nanoseconds: nanoseconds) }.value
+    }
+
     /// Sends a picture file the same way: the chat app shows it in the input box, Return sends it.
     /// The clipboard gets the picture itself (PNG and TIFF) and the file, so it pastes as a picture.
-    public static func sendImage(_ file: URL, toPID pid: pid_t, windowFrame: CGRect, clickPoint: CGPoint) async throws {
+    @discardableResult
+    public static func sendImage(_ file: URL, toPID pid: pid_t, windowFrame: CGRect, clickPoint: CGPoint,
+                                 confirm: (() async -> Bool)? = nil) async throws -> Bool {
         guard isTrusted else { throw SendError.notTrusted }
         guard let data = await Task.detached(operation: { pictureData(file) }).value else {
             throw PictureError.unreadable(file.lastPathComponent)
         }
         // A picture takes longer than text to show up in the input box.
-        try await paste(toPID: pid, windowFrame: windowFrame, clickPoint: clickPoint, settle: 1_200_000_000) { board in
+        return try await paste(toPID: pid, windowFrame: windowFrame, clickPoint: clickPoint, settle: 1_200_000_000, confirm: confirm) { board in
             let item = NSPasteboardItem()
             item.setData(data.png, forType: .png)
             item.setData(data.tiff, forType: .tiff)
@@ -72,9 +94,10 @@ public enum AutoSender {
     }
 
     /// Copy (`fill` writes the clipboard), bring the window forward, click the input box, ⌘V, wait
-    /// `settle` nanoseconds, Return; then put the clipboard, mouse and front app back.
+    /// `settle` nanoseconds, ask `confirm`, Return; then put the clipboard, mouse and front app back.
+    /// false = `confirm` said no and Return was not pressed.
     private static func paste(toPID pid: pid_t, windowFrame: CGRect, clickPoint: CGPoint, settle: UInt64,
-                              fill: (NSPasteboard) -> Void) async throws {
+                              confirm: (() async -> Bool)?, fill: (NSPasteboard) -> Void) async throws -> Bool {
         guard isTrusted else { throw SendError.notTrusted }
         guard let app = NSRunningApplication(processIdentifier: pid) else { throw SendError.appNotRunning }
 
@@ -104,13 +127,18 @@ public enum AutoSender {
         try await Task.sleep(nanoseconds: 300_000_000)
         key(9, flags: .maskCommand)   // V
         try await Task.sleep(nanoseconds: settle)
-        key(36)                       // Return
-        try await Task.sleep(nanoseconds: 400_000_000)
+        var pressed = true
+        if let confirm, !(await confirm()) { pressed = false }
+        if pressed { key(36) }        // Return
+        // From here on nothing may stop half-way (a pause cancels the task): the clipboard, mouse and
+        // front app are always put back.
+        await wait(400_000_000)
 
         // Put things back the way they were.
         restore(saved, to: pasteboard)
         if let p = mouseBefore { CGWarpMouseCursorPosition(p) }
         if let prev = previousApp, prev.processIdentifier != pid { giveBackFront(to: prev) }
+        return pressed
     }
 
     /// Clicks once at a point inside the target window (e.g. a contact row), like a person would.

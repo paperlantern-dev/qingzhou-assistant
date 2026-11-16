@@ -252,7 +252,7 @@ struct SettingsView: View {
                     Divider().padding(.leading, 14)
                     row { ToggleLine(title: "看懂客人发的图片", isOn: $ctl.options.picturesToModel) }
                 }
-                Text("图里有地址或电话的，只发屏蔽后的文字，不发图片本身。")
+                Text("打开后，客人发的图片会交给云端模型看。图里有地址或电话的、本机看不清的，不发图片本身。")
                     .font(.system(size: 13)).foregroundStyle(Theme.sub).padding(.horizontal, 14)
             }
         }

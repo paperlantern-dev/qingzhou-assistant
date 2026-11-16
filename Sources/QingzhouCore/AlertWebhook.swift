@@ -37,7 +37,10 @@ public enum AlertWebhook {
 
     /// “【轻舟助手】…”: who wrote, what, and why it was left to the user.
     public static func message(who: String, text: String, reason: String) -> String {
-        "【轻舟助手】需要你处理\n客户：\(who.prefix(30))\n消息：\(Privacy.redact(String(text.prefix(200))).text)\n原因：\(reason.prefix(40))"
+        // The alert goes through a chat service's servers: phones, addresses and the like are hidden in every field
+        // (a customer's remark name often carries a phone number).
+        func hidden(_ s: String, _ limit: Int) -> String { Privacy.redact(String(s.prefix(limit))).text }
+        return "【轻舟助手】需要你处理\n客户：\(hidden(who, 30))\n消息：\(hidden(text, 200))\n原因：\(hidden(reason, 40))"
     }
 
     /// nil when the robot accepted the message (WeCom: errcode 0; Feishu: code 0 or StatusCode 0),

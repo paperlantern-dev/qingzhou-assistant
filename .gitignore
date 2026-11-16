@@ -11,4 +11,7 @@ test-reports/
 *.env
 .env*
 客户记忆/
+备份/
 dist/
+# an in-project knowledge folder is someone's own (the samples live in knowledge-samples/)
+/knowledge/

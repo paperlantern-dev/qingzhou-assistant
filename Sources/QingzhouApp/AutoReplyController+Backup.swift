@@ -4,8 +4,7 @@ import QingzhouCore
 /// 每天备份: customer memory, knowledge files and settings, copied once a day (see DataBackup).
 extension AutoReplyController {
     static var backupFolder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("轻舟助手/备份", isDirectory: true)
+        AppData.root.appendingPathComponent("备份", isDirectory: true)
     }
 
     /// Makes today's backup if there is none yet. Not in test runs (they use other folders).

@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/f8bb3fe9-ccbc-49f0-a34b-027b423585c9
 
 ### 方法一：直接下载（不用懂编程）
 
-1. 到 [下载页](https://github.com/paperlantern-dev/qingzhou-assistant/releases/latest) 下载 `qingzhou-assistant-0.1.0.zip`，双击解压。
+1. 到 [下载页](https://github.com/paperlantern-dev/qingzhou-assistant/releases/latest) 下载 `qingzhou-assistant-0.1.1.zip`，双击解压。
 2. 把 **轻舟助手** 拖到“应用程序”文件夹，双击打开。
 3. 第一次打开，Mac 会提示“无法验证开发者”（这个应用没有花钱买苹果的开发者签名）。打开 系统设置 › 隐私与安全性，往下拉，点 **仍要打开**。只需要做一次。
 
@@ -56,17 +56,21 @@ open build/模拟微信.app build/轻舟助手.app
 
 ## 知识库
 
-把你店里的资料放进 `knowledge/` 文件夹（或在应用里换一个文件夹），支持 txt、md、csv、pdf、docx、rtf，改了自动重新加载。
+你店里的资料放在 `文稿/轻舟助手知识库`（第一次打开时自动建好，里面先有一份示例；也可以在应用里换一个文件夹），支持 txt、md、csv、pdf、docx、rtf，改了自动重新加载。
 
-- `knowledge/` 里现在是一家虚构水果店的**示例**，请换成你自己的。
+- 这个文件夹在项目外面，你的真实价格和资料不会进 git，也不会被打进安装包。
+- 项目里的 `knowledge-samples/` 只是一家虚构水果店的**示例**，打包时只带这几份。
 - 价格表用 csv，表头：`品名,规格,价格,说明`。
 - 商品照片放在知识库文件夹里的 `商品照片/`，用品名起文件名（如 `红富士.jpg`）。
 - 知识库是空的时候，完全不自动回复。
 
 ## 隐私和数据
 
-- 截图只在本机处理，不上传。发给 AI 的只有聊天文字（地址电话已屏蔽）、相关的知识库片段，以及不含隐私文字的客户图片（可关）。
-- 客户记忆在 `~/Library/Application Support/轻舟助手/`，只在你的电脑上。
+- 截图只在本机处理，不上传。发给 AI 的只有聊天文字和相关的知识库片段，发之前先在本机把地址、电话、邮箱、微信号、证件号和说出来的姓名换成占位符。
+- 客户发的图片默认**不**交给云端模型；在设置里打开“看懂客人发的图片”后才会发，而且图里有隐私文字、或本机看不清的图片仍然不发。
+- 手机提醒（企业微信 / 飞书机器人）里的客户名、消息和原因也先屏蔽再发。
+- 屏蔽是按规则在本机做的，认不出聊天里随口提到、没有任何提示词的姓名。
+- 客户记忆、图片、每天的备份在 `~/Library/Application Support/轻舟助手/`，你的知识库在 `文稿/轻舟助手知识库`，都在项目文件夹外面，只在你的电脑上。
 - **不要**把你的真实知识库、客户记忆、API Key 提交到公开仓库。
 
 ## 使用须知
@@ -78,9 +82,13 @@ open build/模拟微信.app build/轻舟助手.app
 ## 开发
 
 ```bash
-swift test                # 单元测试
-./scripts/build_app.sh    # 生成 build/轻舟助手.app 和 build/模拟微信.app
+swift test                       # 单元测试
+./scripts/build_app.sh           # 生成 build/轻舟助手.app 和 build/模拟微信.app
+./scripts/e2e_send_safety.sh     # 发送安全的端到端测试：真应用操作模拟微信（约 10 分钟，期间别动鼠标键盘）
+./scripts/package_release.sh     # 打安装包：只带审核过的示例资料，并扫描整个 ZIP
 ```
+
+自动测试用自己的临时数据文件夹，不读也不改你的客户记忆。
 
 - `Sources/QingzhouCore`：读屏解析、知识库、回复、规则、隐私屏蔽（不含界面，全部有测试）
 - `Sources/QingzhouApp`：SwiftUI 界面和自动回复流程

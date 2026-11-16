@@ -30,7 +30,7 @@ struct AssistantOptions: Codable, Equatable {
     /// Press Esc twice quickly to stop auto-reply.
     var escToStop = true
     /// 看图: customers' pictures are shown to the reply model (never ones with an address or phone in them).
-    var picturesToModel = true
+    var picturesToModel = false   // off until the owner turns it on: pictures would go to a cloud model
     /// Models reached through an API (keys are in the Keychain), and the one in use.
     var apiConfigs: [ApiConfig] = ApiConfig.presets
     var apiActive: UUID?

@@ -15,8 +15,7 @@ extension AutoReplyController {
 
     /// Pictures chosen for broadcasts are copied here, so they are still there when the time comes.
     static var broadcastPictureFolder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("轻舟助手/图片", isDirectory: true)
+        AppData.root.appendingPathComponent("图片", isDirectory: true)
     }
 
     /// Copies a picture the owner chose into the app's own folder; returns the copy.

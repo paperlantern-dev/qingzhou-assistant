@@ -10,7 +10,8 @@ public struct PictureInfo: Equatable {
     public let labels: [String]
     /// The picture has an address, phone number or ID in it: it must not be sent to the cloud.
     public let hasPrivateText: Bool
-    /// This Mac could not read the picture, so it cannot tell whether it is private: it stays here.
+    /// This Mac could not tell whether the picture is private (reading failed, words it was not sure of, or
+    /// a document with no words read): it stays here unless the owner looks at it.
     public let readFailed: Bool
 
     public init(text: String, labels: [String], hasPrivateText: Bool, readFailed: Bool = false) {
@@ -41,8 +42,22 @@ public enum PictureReader {
         guard let lines = (try? OCRService.recognize(image))?.lines else {
             return PictureInfo(text: "", labels: labels(of: image), hasPrivateText: false, readFailed: true)
         }
+        return assess(lines: lines.map { (text: $0.text, confidence: $0.confidence) }, labels: labels(of: image))
+    }
+
+    /// Words read with less confidence than this may be wrong, so they prove nothing about privacy.
+    static let sureEnough: Float = 0.5
+
+    /// Decides from what was read. Not sure = some words were read badly, or the picture looks like a
+    /// document and no words were read.
+    static func assess(lines: [(text: String, confidence: Float)], labels: [String]) -> PictureInfo {
         let hidden = Privacy.redact(lines.map(\.text).joined(separator: " "))
-        return PictureInfo(text: hidden.text, labels: labels(of: image), hasPrivateText: hidden.changed)
+        let unsureWords = lines.contains { $0.confidence < sureEnough }
+        let paper = ["document", "text", "paper", "receipt", "screenshot", "handwriting", "printed_page", "book", "letter"]
+        let looksLikeDocument = labels.contains { l in paper.contains { l.lowercased().contains($0) } }
+        let nothingToGoOn = lines.isEmpty && looksLikeDocument
+        return PictureInfo(text: hidden.text, labels: labels, hasPrivateText: hidden.changed,
+                           readFailed: unsureWords || nothingToGoOn)
     }
 
     /// Up to three likely contents, e.g. ["fruit", "apple"].

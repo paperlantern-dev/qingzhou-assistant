@@ -31,4 +31,12 @@ public enum SendCheck {
         if !PictureCheck.inputLooksEmpty(nowInput) { return "输入框里有别的字" }
         return nil
     }
+
+    /// True when what the input box shows is the assistant's own reply (whole, or typed half-way).
+    /// Anything else may be the owner's own words and is never deleted.
+    public static func isAssistantText(input: String, reply: String) -> Bool {
+        let seen = TextMatch.normalize(input)
+        guard seen.count >= 2 else { return false }
+        return TextMatch.shows(seen, reply) || TextMatch.normalize(reply).contains(seen)
+    }
 }

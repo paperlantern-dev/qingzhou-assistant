@@ -201,8 +201,7 @@ public enum PictureLibrary {
 
     /// ~/Library/Application Support/轻舟助手/图片
     public static var defaultFolder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("轻舟助手/图片", isDirectory: true)
+        AppData.root.appendingPathComponent("图片", isDirectory: true)
     }
 
     /// A common picture file, by its extension (whether or not it exists).

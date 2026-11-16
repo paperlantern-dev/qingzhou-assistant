@@ -44,7 +44,12 @@ struct Contact: Identifiable, Codable {
 final class MockChat: ObservableObject {
     @Published var contacts: [Contact]
     @Published var selected: String
-    @Published var draft = ""
+    /// The input box of the open chat. Each chat keeps its own, like WeChat.
+    @Published var draft = "" { didSet { if oldValue.isEmpty, !draft.isEmpty { somethingTyped() }; writeLog() } }
+    private var drafts: [String: String] = [:]
+    /// `--when-typed switch:<chat>` or `--when-typed receive:<chat>:<text>`: done once, 1.5 s after the first
+    /// text or picture lands in the input box (sending-safety tests: the chat changes right before Return).
+    var whenTyped: String?
     @Published var scriptOn: Bool
     @Published var nextIncoming = ""
     @Published var nextSender = "客户·王女士"
@@ -125,13 +130,35 @@ final class MockChat: ObservableObject {
             return false
         }
         events.append("pasted picture=\(pendingPicture?.name ?? "")")
+        somethingTyped()
         return true
+    }
+
+    /// `--draft <chat> <text>`: words the owner left in that chat's input box.
+    func leaveDraft(_ text: String, in name: String) {
+        if name == selected { let action = whenTyped; whenTyped = nil; draft = text; whenTyped = action } else { drafts[name] = text }
+        writeLog()
+    }
+
+    private func somethingTyped() {
+        guard let action = whenTyped else { return }
+        whenTyped = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self else { return }
+            let parts = action.split(separator: ":", maxSplits: 2).map(String.init)
+            if parts.count == 2, parts[0] == "switch" { self.select(parts[1]) }
+            if parts.count == 3, parts[0] == "receive" { self.receive(parts[2], from: parts[1]) }
+            self.events.append("when-typed \(action)")
+            self.writeLog()
+        }
     }
 
     var current: Contact { contacts.first { $0.id == selected } ?? contacts[0] }
 
     func select(_ name: String) {
+        drafts[selected] = draft
         selected = name
+        draft = drafts[name] ?? ""
         update(name) { $0.unread = 0 }
         events.append("open chat=\(name)")
         writeLog()
@@ -276,6 +303,7 @@ final class MockChat: ObservableObject {
         enc.dateEncodingStrategy = .iso8601
         let payload: [String: AnyEncodable] = [
             "nonce": AnyEncodable(nonce), "contacts": AnyEncodable(contacts), "inputEvents": AnyEncodable(events),
+            "selected": AnyEncodable(selected), "drafts": AnyEncodable(drafts.merging([selected: draft]) { _, now in now }),
         ]
         try? enc.encode(payload).write(to: logURL)
     }
@@ -559,6 +587,11 @@ struct MockWeChatApp: App {
             ])
         }
         if let o = args.firstIndex(of: "--open"), o + 1 < args.count { chat.select(args[o + 1]) }   // start on this chat
+        if let s = args.firstIndex(of: "--say"), s + 2 < args.count {   // one customer writes one message
+            chat.useScript([args[s + 1]: [args[s + 2]]])
+        }
+        if let d = args.firstIndex(of: "--draft"), d + 2 < args.count { chat.leaveDraft(args[d + 2], in: args[d + 1]) }
+        if let w = args.firstIndex(of: "--when-typed"), w + 1 < args.count { chat.whenTyped = args[w + 1] }
         if args.contains("--demo-media") { chat.demoMedia() }
         if args.contains("--voice-now") {
             chat.select("客户·李先生")

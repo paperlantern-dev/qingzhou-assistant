@@ -164,3 +164,41 @@ func knowledgeImportNames() {
     #expect(KnowledgeImport.destinationName(for: "价格.csv", existing: ["价格.csv", "价格 2.csv"]) == "价格 3.csv")
     #expect(KnowledgeImport.isSupported(URL(fileURLWithPath: "/a/b.docx")) && !KnowledgeImport.isSupported(URL(fileURLWithPath: "/a/b.zip")))
 }
+
+// MARK: 自己的资料放在项目外面
+
+private func tempFolder(_ files: [String: String] = [:]) throws -> URL {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("qz-kb-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    for (name, text) in files { try text.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8) }
+    return dir
+}
+
+@Test("The owner's knowledge folder is outside the project; a test run has its own")
+func knowledgeFolderIsOutsideTheProject() {
+    let home = URL(fileURLWithPath: "/Users/someone")
+    #expect(KnowledgeLocation.userFolder(home: home, testData: nil).path == "/Users/someone/Documents/轻舟助手知识库")
+    #expect(KnowledgeLocation.userFolder(home: home, testData: URL(fileURLWithPath: "/tmp/run")).path == "/tmp/run/知识库")
+}
+
+@Test("First use: files in the old in-project folder are copied, never moved; otherwise the samples are")
+func knowledgeMigrationKeepsFiles() throws {
+    let legacy = try tempFolder(["价格表.csv": "品名,价格\n苹果,5"]), samples = try tempFolder(["示例-价格表.csv": "x"])
+    let mine = FileManager.default.temporaryDirectory.appendingPathComponent("qz-mine-\(UUID().uuidString)")
+    KnowledgeLocation.prepare(userFolder: mine, legacy: legacy, samples: samples)
+    #expect(try String(contentsOf: mine.appendingPathComponent("价格表.csv"), encoding: .utf8) == "品名,价格\n苹果,5")
+    #expect(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("价格表.csv").path))      // still there
+    #expect(!FileManager.default.fileExists(atPath: mine.appendingPathComponent("示例-价格表.csv").path))   // own files win
+
+    let fresh = FileManager.default.temporaryDirectory.appendingPathComponent("qz-fresh-\(UUID().uuidString)")
+    KnowledgeLocation.prepare(userFolder: fresh, legacy: nil, samples: samples)
+    #expect(FileManager.default.fileExists(atPath: fresh.appendingPathComponent("示例-价格表.csv").path))
+}
+
+@Test("A knowledge folder that already exists is left exactly as it is")
+func knowledgeFolderIsNeverOverwritten() throws {
+    let mine = try tempFolder(["价格表.csv": "我改过的"]), legacy = try tempFolder(["价格表.csv": "旧的", "别的.md": "x"])
+    KnowledgeLocation.prepare(userFolder: mine, legacy: legacy, samples: nil)
+    #expect(try String(contentsOf: mine.appendingPathComponent("价格表.csv"), encoding: .utf8) == "我改过的")
+    #expect(!FileManager.default.fileExists(atPath: mine.appendingPathComponent("别的.md").path))
+}

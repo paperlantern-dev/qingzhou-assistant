@@ -3,20 +3,18 @@ import QingzhouCore
 
 /// The knowledge base: where it lives, loading it, and the “试问一句” test.
 extension AutoReplyController {
-    /// The folder the user picked last time; else `<project>/knowledge` next to the build folder;
-    /// else (the downloaded app) `~/Documents/轻舟助手知识库`, started from the samples in the app.
+    /// The folder the user picked last time; else their own folder outside the project
+    /// (~/Documents/轻舟助手知识库), made on first use from an older in-project `knowledge` folder or
+    /// from the samples. The project's own sample folder is never used as the live knowledge base.
     static var defaultKBFolder: URL {
         if let saved = UserDefaults.standard.string(forKey: "kbFolder") { return URL(fileURLWithPath: saved) }
         let fm = FileManager.default
         let project = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("knowledge")
-        if fm.fileExists(atPath: project.path) { return project }
-        let mine = fm.homeDirectoryForCurrentUser.appendingPathComponent("Documents/轻舟助手知识库")
-        if !fm.fileExists(atPath: mine.path), let samples = Bundle.main.resourceURL?.appendingPathComponent("示例知识库"),
-           fm.fileExists(atPath: samples.path) {
-            try? fm.copyItem(at: samples, to: mine)   // no samples copied = an empty knowledge base, shown as such
-        }
-        return mine
+        let samples = [Bundle.main.resourceURL?.appendingPathComponent("示例知识库"), project.appendingPathComponent("knowledge-samples")]
+            .compactMap { $0 }.first { fm.fileExists(atPath: $0.path) }
+        let isTest = CommandLine.arguments.contains("--autotest") || CommandLine.arguments.contains("--data-dir")
+        let mine = KnowledgeLocation.userFolder(home: fm.homeDirectoryForCurrentUser, testData: isTest ? AppData.root : nil)
+        return KnowledgeLocation.prepare(userFolder: mine, legacy: project.appendingPathComponent("knowledge"), samples: samples)
     }
 
     func setKBFolder(_ url: URL) {

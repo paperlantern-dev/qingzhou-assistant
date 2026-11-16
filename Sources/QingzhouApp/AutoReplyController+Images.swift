@@ -36,8 +36,15 @@ extension AutoReplyController {
             add(.warn, "发图片前没能看清聊天窗口，先不发")
             return nil
         }
+        guard isRunning else { return nil }
         guard ChatID.same(now.chat, chat), let pid = now.window.owningApplication?.processID else {
             add(.warn, "要发图片时，当前会话已不是「\(snap.conversation.title)」，先不发")
+            return nil
+        }
+        let key = snap.conversation.pendingKey
+        if let why = SendCheck.problem(chat: chat, pendingKey: key, nowChat: now.chat,
+                                       nowPendingKey: now.conversation.pendingKey, nowInput: "") {
+            add(.warn, "要发图片时又看了一眼：\(why)，先不发")
             return nil
         }
         guard PictureCheck.inputLooksEmpty(now.inputText) else {
@@ -49,7 +56,19 @@ extension AutoReplyController {
                             y: f.maxY - target.layout.inputClickFromBottom)
         let before = PictureCheck.paneFingerprint(now.image, windowSize: f.size, layout: target.layout)
         add(.debug, "发图片 \(name)：窗口 \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))×\(Int(f.height))，点击输入框 \(Int(point.x)),\(Int(point.y))")
-        try await AutoSender.sendImage(file, toPID: pid, windowFrame: f, clickPoint: point)
+        // Pasted, not yet sent: one more look, then Return. (A picture in the box can't be read, so the box
+        // is left as it is when the send is called off.)
+        let pressed = try await AutoSender.sendImage(file, toPID: pid, windowFrame: f, clickPoint: point) { [self] in
+            await holdForTest()
+            let pasted = await read(forceOCR: true)
+            let why = pasted == nil ? "没能看清聊天窗口" : !isRunning ? "已暂停"
+                : SendCheck.problem(chat: chat, pendingKey: key, nowChat: pasted!.chat,
+                                    nowPendingKey: pasted!.conversation.pendingKey, nowInput: "")
+            guard let why else { return true }
+            add(.warn, "按发送前又看了一眼：\(why)，图片没有发出（还在输入框里，请你看一下）")
+            return false
+        }
+        guard pressed else { return nil }
         lastSendAt = Date()   // the minimum gap between sends counts pictures too
         add(.debug, "发送时：" + AutoSender.lastTrace)
         return await pictureArrived(name, before: before, in: now, chat: chat) ? "前台粘贴图片" : nil

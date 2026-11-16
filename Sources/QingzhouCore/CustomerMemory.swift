@@ -148,8 +148,7 @@ public final class CustomerMemoryStore {
     public static let keep = 500                          // messages kept per customer
 
     public static var defaultFolder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("轻舟助手/客户记忆", isDirectory: true)
+        AppData.root.appendingPathComponent("客户记忆", isDirectory: true)
     }
 
     public init(folder: URL = CustomerMemoryStore.defaultFolder) {
